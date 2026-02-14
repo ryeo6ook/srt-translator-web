@@ -8,7 +8,24 @@ import tempfile
 import queue
 import threading
 import requests
+import json
 from srt_translator import SRTTranslator, DEFAULT_MODELS, API_ENDPOINTS
+
+# 预设文件路径
+PRESETS_FILE = "presets.json"
+
+def load_presets():
+    if os.path.exists(PRESETS_FILE):
+        try:
+            with open(PRESETS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_presets(presets):
+    with open(PRESETS_FILE, "w", encoding="utf-8") as f:
+        json.dump(presets, f, ensure_ascii=False, indent=2)
 
 # 配置页面
 st.set_page_config(
@@ -78,6 +95,8 @@ def main():
     # 初始化 session state
     if "custom_models" not in st.session_state:
         st.session_state.custom_models = []
+    if "user_prompt" not in st.session_state:
+        st.session_state.user_prompt = ""
 
     # 侧边栏配置
     with st.sidebar:
@@ -127,7 +146,42 @@ def main():
         
         # 高级选项
         st.subheader("高级选项")
-        user_prompt = st.text_area("用户提示词 (User Prompt)", height=100, placeholder="例如：请将所有专业术语翻译为简体中文...", help="您可以添加额外的指令来控制翻译风格。")
+        
+        # 预设管理
+        presets = load_presets()
+        preset_names = ["-- 选择预设 --"] + list(presets.keys())
+        
+        def on_preset_change():
+            if st.session_state.selected_preset != "-- 选择预设 --":
+                st.session_state.user_prompt = presets[st.session_state.selected_preset]
+
+        st.selectbox("加载预设提示词", preset_names, key="selected_preset", on_change=on_preset_change)
+        
+        user_prompt = st.text_area("用户提示词 (User Prompt)", height=100, key="user_prompt", placeholder="例如：请将所有专业术语翻译为简体中文...", help="您可以添加额外的指令来控制翻译风格。")
+        
+        with st.expander("💾 保存/管理预设"):
+            new_preset_name = st.text_input("新预设名称", placeholder="例如：科技风格")
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                if st.button("保存当前提示词"):
+                    if new_preset_name and user_prompt:
+                        presets[new_preset_name] = user_prompt
+                        save_presets(presets)
+                        st.success(f"已保存: {new_preset_name}")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("请输入名称和内容")
+            
+            with col_p2:
+                if st.session_state.selected_preset != "-- 选择预设 --":
+                    if st.button("删除当前选中"):
+                        del presets[st.session_state.selected_preset]
+                        save_presets(presets)
+                        st.success("已删除")
+                        time.sleep(1)
+                        st.rerun()
+
         bilingual = st.checkbox("生成双语字幕", value=False)
         literal_align = st.checkbox("逐条逐句对齐 (直译优先)", value=False)
         structured_output = st.checkbox("结构化输出 (JSON)", value=False, help="尝试强制模型返回 JSON 格式，以保证行数对应。")
